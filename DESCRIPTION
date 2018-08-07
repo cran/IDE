@@ -1,8 +1,8 @@
 Package: IDE
 Type: Package
 Title: Integro-Difference Equation Spatio-Temporal Models
-Version: 0.1.0
-Date: 2018-05-03
+Version: 0.2.0
+Date: 2018-08-07
 Authors@R: c(
     person("Andrew", "Zammit-Mangion", , "andrewzm@gmail.com", c("aut", "cre")))
 Maintainer: Andrew Zammit-Mangion <andrewzm@gmail.com>
@@ -24,8 +24,8 @@ LazyData: true
 VignetteBuilder: knitr
 NeedsCompilation: no
 License: GPL (>= 2)
-RoxygenNote: 6.0.1
-Packaged: 2018-05-05 00:46:06 UTC; andrew
+RoxygenNote: 6.1.0
+Packaged: 2018-08-07 09:50:04 UTC; andrew
 Author: Andrew Zammit-Mangion [aut, cre]
 Repository: CRAN
-Date/Publication: 2018-05-07 13:22:31 UTC
+Date/Publication: 2018-08-07 10:40:03 UTC
