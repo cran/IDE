@@ -28,6 +28,7 @@
 #' @param hindcast an integer indicating the number of steps to hindcast (where each step corresponds to one \code{difftime})
 #' @param object object of class \code{IDE} to for fitting or predicting
 #' @param method method used to estimate the parameters. Currently only \code{"DEoptim"} is allowed, which calls an evolution algorithm from the package \code{DEoptim}
+#' @param fix list of parameters which are fixed and not estimated (e.g., \code{list(sigma2_eps = 0.01)}). Currently only the measurement-error variance (\code{sigma2_eps}) can be fixed
 #' @param newdata data frame or object of class \code{STIDF} containing the spatial and temporal points at which to predict
 #' @param covariances a flag indicating whether prediction covariances should be returned or not when predicting
 #' @param ... other parameters passed to \code{DEoptim} or \code{predict}
@@ -213,7 +214,8 @@ IDE <- function(f, data, dt, process_basis = NULL, kernel_basis = NULL, grid_siz
     stop("Data time points need to be equidistant on chose time interval")
   T <- length(time_points)
 
-  Z <- data[["z"]]
+  depvar_name <- all.vars(f)[1]
+  Z <- data[[depvar_name]]
   PHI_obs_list <- lapply(1:T, function(i) {
     if(any(time(data) %in% time_points[i])) {
       eval_basis(process_basis, coordinates(data[,time_points[i]]))
@@ -258,15 +260,21 @@ IDE <- function(f, data, dt, process_basis = NULL, kernel_basis = NULL, grid_siz
 
 #' @export
 #' @rdname IDE
-fit.IDE <- function(object, method = "DEoptim", ...) {
+fit.IDE <- function(object, method = "DEoptim", fix = list(), ...) {
 
   ## Optimise log likelihood
-  optimfun <- function(theta, IDEmodel) {
+  optimfun <- function(theta, IDEmodel, fix = list()) {
     nk <- IDEmodel$get("nk")
     p <- length(theta)
-    sigma2_eps <- exp(theta[p-1])
+    if(!is.null(fix$sigma2_eps)) {
+      sigma2_eps <- fix$sigma2_eps
+      nsigma2 <- 1
+    } else {
+      sigma2_eps <- exp(theta[p-1])
+      nsigma2 <- 2
+    }
     sigma2_eta <- exp(theta[p])
-    ki <- theta[1:(p-2)]
+    ki <- theta[1:(p-nsigma2)]
     ki <- vec_to_list(ki, nk)
     ki[[1]] <- ki[[1]]*1000
     ki[[2]] <- exp(ki[[2]]*10)
@@ -285,12 +293,19 @@ fit.IDE <- function(object, method = "DEoptim", ...) {
               rep(log(P$k2[1])/10, nk[2]),
               rep(P$k3[1], nk[3]),
               rep(P$k4[1], nk[4]),
-              log(P$sigma2_eps[1]), log(P$sigma2_eta[1]))
+              log(P$sigma2_eps[1]),
+              log(P$sigma2_eta[1]))
     upper = c(rep(P$k1[2]/1000, nk[1]),
               rep(log(P$k2[2])/10, nk[2]),
               rep(P$k3[2], nk[3]),
               rep(P$k4[2], nk[4]),
-              log(P$sigma2_eps[2]), log(P$sigma2_eta[2]))
+              log(P$sigma2_eps[2]),
+              log(P$sigma2_eta[2]))
+
+    if(!is.null(fix$sigma2_eps)) {
+      lower <- lower[-(length(lower) - 1)]
+      upper <- upper[-(length(upper) - 1)]
+    }
 
     ## Bring functions into local environment for DEoptim
     O <- DEoptim(fn = optimfun,
@@ -298,7 +313,8 @@ fit.IDE <- function(object, method = "DEoptim", ...) {
                  upper = upper,
                  control = c(list(packages = c("Matrix","FRK",
                                                "sp", "dplyr", "IDE")),...),
-                 IDEmodel = object)
+                 IDEmodel = object,
+                 fix = fix)
     theta <- O$optim$bestmem
   } else {
     stop("Only DEoptim implemented for now")
@@ -306,9 +322,15 @@ fit.IDE <- function(object, method = "DEoptim", ...) {
 
   nk <- object$get("nk")
   p <- length(theta)
-  sigma2_eps <- exp(theta[p-1])
+  if(!is.null(fix$sigma2_eps)) {
+    sigma2_eps <- fix$sigma2_eps
+    nsigma2 <- 1
+  } else {
+    sigma2_eps <- exp(theta[p-1])
+    nsigma2 <- 2
+  }
   sigma2_eta <- exp(theta[p])
-  ki <- theta[1:(p-2)]
+  ki <- theta[1:(p - nsigma2)]
   ki <- vec_to_list(ki, nk)
   ki[[1]] <- ki[[1]]*1000
   ki[[2]] <- exp(ki[[2]]*10)
@@ -348,6 +370,7 @@ predict.IDE <- function(object, newdata = NULL, covariances = FALSE, ...) {
       stop("Prediction times not a subset of modelled predictions. Please use
            forecast and hindcast arguments in IDE if you wish to predict outside
            the time horizon of the data")
+
     PHI_pred_1 <- list()
     for(i in seq_along(time_points)) {
       newdata_1 <- subset(newdata, time(newdata) == time_points[i])
@@ -445,10 +468,13 @@ show_kernel <- function(IDEmodel, scale = 1) {
     if(ndim == 2) {
       s$s_grid_df$hor <-  eval_basis(kernel_basis[[3]],s$s_grid_mat) %*% k[[3]] %>% as.numeric()
       s$s_grid_df$ver <-  eval_basis(kernel_basis[[4]],s$s_grid_mat) %*% k[[4]] %>% as.numeric()
+      s$s_grid_df$s1 <- s$s_grid_df[,1]
+      s$s_grid_df$s2 <- s$s_grid_df[,2]
       ggplot(data=s$s_grid_df, aes(x=s1, y=s2)) +
         geom_segment(aes(xend=s1-hor*scale, yend=s2-ver*scale),
                      colour = "black", size = 0.2,
                      arrow = arrow(length = unit(0.1,"cm"))) +
+        xlab(names(s$s_grid_df)[1]) + ylab(names(s$s_grid_df)[2]) +
         theme_bw()
     } else {
       stop("Plotting only implemented for 2D spatial fields")
@@ -721,6 +747,7 @@ construct_Q <- function(Q_eta, M, T)
              Q,
              cbind(Zeromat(n, n *(T - 2)), -QM, Q_eta))
   #tryCatch({ chol(Q)},error=function(e) {browser()})
+  Q <- as(Q, "dgCMatrix")
   return(Q)
 }
 
