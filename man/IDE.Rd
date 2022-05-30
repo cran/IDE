@@ -6,8 +6,16 @@
 \alias{predict.IDE}
 \title{Construct IDE object, fit and predict}
 \usage{
-IDE(f, data, dt, process_basis = NULL, kernel_basis = NULL,
-  grid_size = 41, forecast = 0, hindcast = 0)
+IDE(
+  f,
+  data,
+  dt,
+  process_basis = NULL,
+  kernel_basis = NULL,
+  grid_size = 41,
+  forecast = 0,
+  hindcast = 0
+)
 
 fit.IDE(object, method = "DEoptim", fix = list(), ...)
 
@@ -65,9 +73,10 @@ IDEmodel <- IDE(f = z ~ s1 + s2,
                 dt = as.difftime(1, units = "days"),
                 grid_size = 41)
 \donttest{
-fit_results_sim1 <- fit.IDE(IDEmodel,
-                            parallelType = 1)
-ST_grid_df <- predict(fit_results_sim1$IDEmodel)}
+#fit_results_sim1 <- fit.IDE(IDEmodel,
+#                            parallelType = 1)
+#ST_grid_df <- predict(fit_results_sim1$IDEmodel)
+}
 }
 \seealso{
 \code{\link{show_kernel}} for plotting the kernel
